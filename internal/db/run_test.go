@@ -1155,6 +1155,32 @@ func TestVerifyTerminalRunRecordedHeadIsACompareAndSwap(t *testing.T) {
 	if updated, err := d.VerifyTerminalRunRecordedHead(run.ID, types.RunFailed, "recorded", "reviewed"); err != nil || updated {
 		t.Fatalf("already-verified CAS = %t, %v", updated, err)
 	}
+
+	// A run whose custody was already returned is never re-stamped, even when
+	// every other predicate matches.
+	returned, err := d.InsertRun(repo.ID, "feature-returned", "submitted", "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.UpdateRunHeadSHA(returned.ID, "recorded"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.UpdateRunReviewApprovedHeadSHA(returned.ID, "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.UpdateRunStatus(returned.ID, types.RunFailed); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetRunCustodyReturned(returned.ID); err != nil {
+		t.Fatal(err)
+	}
+	if updated, err := d.VerifyTerminalRunRecordedHead(returned.ID, types.RunFailed, "recorded", "reviewed"); err != nil || updated {
+		t.Fatalf("custody-returned CAS = %t, %v", updated, err)
+	}
+	got, err = d.GetRun(returned.ID)
+	if err != nil || got.TerminalHeadVerifiedAt != nil || got.CustodyReturnedAt == nil {
+		t.Fatalf("custody-returned CAS changed run = %#v, %v", got, err)
+	}
 }
 
 func TestRunPushBindingIsForwardOnlyAndLegacyRowsStayNullable(t *testing.T) {
